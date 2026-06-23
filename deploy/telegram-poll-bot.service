@@ -1,0 +1,17 @@
+[Unit]
+Description=Telegram Salat Poll Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bot
+WorkingDirectory=/opt/telegram_poll_bot
+EnvironmentFile=/opt/telegram_poll_bot/.env
+Environment=TZ=America/Los_Angeles
+ExecStart=/opt/telegram_poll_bot/.venv/bin/python -u bot.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
