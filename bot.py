@@ -211,12 +211,12 @@ def schedule_jobs(application: Application, settings: Settings) -> None:
     job_queue = application.job_queue
     job_queue.run_daily(
         send_daily_poll,
-        time=time(hour=settings.poll_hour, minute=0),
+        time=time(hour=settings.poll_hour, minute=settings.poll_minute),
         name="daily_poll",
     )
     job_queue.run_daily(
         send_monthly_report,
-        time=time(hour=settings.report_hour, minute=0),
+        time=time(hour=settings.report_hour, minute=settings.report_minute),
         name="monthly_report",
     )
 

@@ -25,7 +25,9 @@ class Settings:
     poll_chat_id: int
     admin_user_id: int
     poll_hour: int
+    poll_minute: int
     report_hour: int
+    report_minute: int
     test_mode: bool
 
 
@@ -47,14 +49,31 @@ def load_settings() -> Settings:
         raise ValueError("POLL_CHAT_ID and ADMIN_USER_ID are required")
 
     poll_hour = int(os.environ.get("POLL_HOUR", "8"))
+    poll_minute = int(os.environ.get("POLL_MINUTE", "0"))
     report_hour = int(os.environ.get("REPORT_HOUR", "9"))
+    report_minute = int(os.environ.get("REPORT_MINUTE", "0"))
     test_mode = _env_bool("TEST_MODE")
+
+    for name, value in (
+        ("POLL_HOUR", poll_hour),
+        ("REPORT_HOUR", report_hour),
+    ):
+        if not 0 <= value <= 23:
+            raise ValueError(f"{name} must be between 0 and 23")
+    for name, value in (
+        ("POLL_MINUTE", poll_minute),
+        ("REPORT_MINUTE", report_minute),
+    ):
+        if not 0 <= value <= 59:
+            raise ValueError(f"{name} must be between 0 and 59")
 
     return Settings(
         bot_token=token,
         poll_chat_id=int(poll_chat_id),
         admin_user_id=int(admin_user_id),
         poll_hour=poll_hour,
+        poll_minute=poll_minute,
         report_hour=report_hour,
+        report_minute=report_minute,
         test_mode=test_mode,
     )
