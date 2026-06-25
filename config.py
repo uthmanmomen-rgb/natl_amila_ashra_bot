@@ -1,5 +1,6 @@
 import os
 from dataclasses import dataclass
+from datetime import date
 
 from dotenv import load_dotenv
 
@@ -9,14 +10,19 @@ POLL_QUESTION = (
     "How many prayers have you offered at the mosque or salat center today?"
 )
 POLL_OPTIONS = [
-    "1 prayer",
-    "2 prayers",
-    "3 prayers",
-    "4 prayers",
     "5 prayers",
+    "4 prayers",
+    "3 prayers",
+    "2 prayers",
+    "1 prayer",
+    "0 prayers",
     "Sick / Traveling",
 ]
 POLL_DAYS = 10
+
+
+def poll_question(day: date) -> str:
+    return f"{POLL_QUESTION} ({day.strftime('%b %d, %Y')})"
 
 
 @dataclass(frozen=True)

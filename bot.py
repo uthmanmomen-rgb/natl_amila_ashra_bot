@@ -12,7 +12,7 @@ from telegram.ext import (
     PollAnswerHandler,
 )
 
-from config import POLL_DAYS, POLL_OPTIONS, POLL_QUESTION, Settings, load_settings
+from config import POLL_DAYS, POLL_OPTIONS, Settings, load_settings, poll_question
 from database import (
     get_poll_by_telegram_id,
     init_db,
@@ -61,7 +61,7 @@ async def send_daily_poll(
 
     message = await context.bot.send_poll(
         chat_id=settings.poll_chat_id,
-        question=POLL_QUESTION,
+        question=poll_question(today),
         options=POLL_OPTIONS,
         is_anonymous=False,
         allows_multiple_answers=False,
