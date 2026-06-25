@@ -9,7 +9,9 @@ from telegram.ext import (
     Application,
     CommandHandler,
     ContextTypes,
+    MessageHandler,
     PollAnswerHandler,
+    filters,
 )
 
 from config import POLL_DAYS, POLL_OPTIONS, Settings, load_settings, poll_question
@@ -77,6 +79,19 @@ async def send_daily_poll(
     return True
 
 
+def is_admin(settings: Settings, user_id: int) -> bool:
+    return user_id in settings.admin_user_ids
+
+
+async def send_report_chunks(
+    context: ContextTypes.DEFAULT_TYPE,
+    user_id: int,
+    report: str,
+) -> None:
+    for chunk in split_message(report):
+        await context.bot.send_message(chat_id=user_id, text=chunk)
+
+
 async def send_monthly_report(context: ContextTypes.DEFAULT_TYPE) -> None:
     settings: Settings = context.application.bot_data["settings"]
     today = date.today()
@@ -85,8 +100,8 @@ async def send_monthly_report(context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     report = format_month_results(today.year, today.month)
-    for chunk in split_message(report):
-        await context.bot.send_message(chat_id=settings.admin_user_id, text=chunk)
+    for admin_id in settings.admin_user_ids:
+        await send_report_chunks(context, admin_id, report)
 
 
 async def poll_answer_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -120,37 +135,62 @@ async def send_report_to_admin(
     context: ContextTypes.DEFAULT_TYPE,
     report: str,
 ) -> None:
-    settings: Settings = context.application.bot_data["settings"]
-    for chunk in split_message(report):
-        await context.bot.send_message(chat_id=settings.admin_user_id, text=chunk)
+    recipient_id = update.effective_user.id
+    await send_report_chunks(context, recipient_id, report)
 
-    if update.effective_chat.id != settings.admin_user_id:
+    if update.effective_chat.id != recipient_id:
         await update.message.reply_text("Report sent to your DM.")
+
+
+def build_help_text(settings: Settings, user_id: int) -> str:
+    if is_admin(settings, user_id):
+        test_note = (
+            "\n\nTest mode is ON — polls work any day. Use /poll force to resend today's poll."
+            if settings.test_mode
+            else ""
+        )
+        return (
+            "Salat poll bot\n\n"
+            "Voting happens in the group — answer each day's poll there "
+            f"(days 1–{POLL_DAYS} of the month).\n\n"
+            "Admin commands (use here in DM):\n"
+            "/results — this month's results\n"
+            "/results YYYY-MM — results for a specific month\n"
+            "/poll — send today's poll to the group\n"
+            "/poll force — resend today's poll (test mode only)\n"
+            "/report — this month's report"
+            f"{test_note}"
+        )
+
+    return (
+        "Salat poll bot\n\n"
+        "Daily prayer polls are posted in the group. Tap the poll there to record "
+        f"your answer (days 1–{POLL_DAYS} of each month).\n\n"
+        "This bot does not take votes by DM — use the poll in the group.\n\n"
+        "Send /start anytime to see this message again."
+    )
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     settings: Settings = context.application.bot_data["settings"]
-    test_note = (
-        "\n\nTest mode is ON — polls work any day. Use /poll force to resend today's poll."
-        if settings.test_mode
-        else ""
-    )
     await update.message.reply_text(
-        "Salat poll bot is running.\n\n"
-        "Commands:\n"
-        "/results — this month's results (sent to your DM)\n"
-        "/results YYYY-MM — results for a specific month\n"
-        "/poll — send today's poll now (admin)\n"
-        "/poll force — resend today's poll (admin, test mode)\n"
-        "/report — send this month's report to your DM (admin)"
-        f"{test_note}"
+        build_help_text(settings, update.effective_user.id)
+    )
+
+
+async def dm_help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.message or update.effective_chat.type != "private":
+        return
+    settings: Settings = context.application.bot_data["settings"]
+    await update.message.reply_text(
+        build_help_text(settings, update.effective_user.id)
     )
 
 
 async def results_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     settings: Settings = context.application.bot_data["settings"]
-    if update.effective_user.id != settings.admin_user_id:
-        await update.message.reply_text("Only the admin can view results.")
+    if not is_admin(settings, update.effective_user.id):
+        await update.message.reply_text("Only admins can view results.")
         return
 
     if context.args:
@@ -171,8 +211,8 @@ async def results_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 async def poll_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     settings: Settings = context.application.bot_data["settings"]
-    if update.effective_user.id != settings.admin_user_id:
-        await update.message.reply_text("Only the admin can trigger polls.")
+    if not is_admin(settings, update.effective_user.id):
+        await update.message.reply_text("Only admins can trigger polls.")
         return
 
     force = bool(context.args and context.args[0].lower() == "force")
@@ -198,8 +238,8 @@ async def poll_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def report_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     settings: Settings = context.application.bot_data["settings"]
-    if update.effective_user.id != settings.admin_user_id:
-        await update.message.reply_text("Only the admin can request reports.")
+    if not is_admin(settings, update.effective_user.id):
+        await update.message.reply_text("Only admins can request reports.")
         return
 
     today = date.today()
@@ -233,22 +273,23 @@ def main() -> None:
     application.bot_data["settings"] = settings
 
     application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("help", start_command))
     application.add_handler(CommandHandler("results", results_command))
     application.add_handler(CommandHandler("poll", poll_command))
     application.add_handler(CommandHandler("report", report_command))
+    application.add_handler(
+        MessageHandler(filters.ChatType.PRIVATE & ~filters.COMMAND, dm_help_handler)
+    )
     application.add_handler(PollAnswerHandler(poll_answer_handler))
 
     schedule_jobs(application, settings)
 
-    if is_poll_day(settings) and not poll_exists(date.today()):
-        application.job_queue.run_once(send_daily_poll, when=5)
-
     mode = "TEST MODE" if settings.test_mode else "normal"
     logger.info(
-        "Bot started (%s). Poll chat=%s admin=%s",
+        "Bot started (%s). Poll chat=%s admins=%s",
         mode,
         settings.poll_chat_id,
-        settings.admin_user_id,
+        sorted(settings.admin_user_ids),
     )
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 

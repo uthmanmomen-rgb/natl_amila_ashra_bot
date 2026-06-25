@@ -29,7 +29,7 @@ def poll_question(day: date) -> str:
 class Settings:
     bot_token: str
     poll_chat_id: int
-    admin_user_id: int
+    admin_user_ids: frozenset[int]
     poll_hour: int
     poll_minute: int
     report_hour: int
@@ -44,15 +44,29 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return value in {"1", "true", "yes", "on"}
 
 
+def _parse_admin_user_ids() -> frozenset[int]:
+    raw = os.environ.get("ADMIN_USER_IDS", "").strip()
+    if not raw:
+        single = os.environ.get("ADMIN_USER_ID", "").strip()
+        if not single:
+            raise ValueError("ADMIN_USER_ID or ADMIN_USER_IDS is required")
+        return frozenset({int(single)})
+
+    ids = [int(part.strip()) for part in raw.split(",") if part.strip()]
+    if not ids:
+        raise ValueError("ADMIN_USER_IDS must contain at least one user ID")
+    return frozenset(ids)
+
+
 def load_settings() -> Settings:
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
     if not token:
         raise ValueError("TELEGRAM_BOT_TOKEN is required")
 
     poll_chat_id = os.environ.get("POLL_CHAT_ID", "").strip()
-    admin_user_id = os.environ.get("ADMIN_USER_ID", "").strip()
-    if not poll_chat_id or not admin_user_id:
-        raise ValueError("POLL_CHAT_ID and ADMIN_USER_ID are required")
+    if not poll_chat_id:
+        raise ValueError("POLL_CHAT_ID is required")
+    admin_user_ids = _parse_admin_user_ids()
 
     poll_hour = int(os.environ.get("POLL_HOUR", "8"))
     poll_minute = int(os.environ.get("POLL_MINUTE", "0"))
@@ -76,7 +90,7 @@ def load_settings() -> Settings:
     return Settings(
         bot_token=token,
         poll_chat_id=int(poll_chat_id),
-        admin_user_id=int(admin_user_id),
+        admin_user_ids=admin_user_ids,
         poll_hour=poll_hour,
         poll_minute=poll_minute,
         report_hour=report_hour,
